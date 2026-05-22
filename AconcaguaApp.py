@@ -22,6 +22,7 @@ FORECAST_FILE_ID = "17uXHC62XX9kmqA6HP2svy5dolpwHABpd"
 # Latest raw future forecast
 LATEST_FORECAST_FILE_ID = "1sNCsYy68dG8ony5R3qHfQy4f1YjzS-cI"
 
+
 VAR_MAP = {
     "Temperature": {
         "obs_col": "sample_ta",
