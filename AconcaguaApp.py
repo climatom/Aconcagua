@@ -19,7 +19,7 @@ VAR_MAP = {
         "colour": "crimson",
     },
     "Wind speed": {
-        "column": "mean_ws",
+        "column": "max_ws",
         "ylabel": "Wind speed [m s⁻¹]",
         "colour": "darkorange",
     },
