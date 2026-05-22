@@ -12,56 +12,157 @@ OBS_FILES = {
     "Nido": "1hhZB9nUUre50OX84Reoi28Kng8p9nFm5",
     "Mulas": "1Ag-eXDgUT0x0QoL-zX8BcYK3vDB5Q9VW",
 }
+VAR_MAP = {
+    "Temperature": {
+        "column": "sample_ta",
+        "ylabel": "Temperature [°C]",
+        "colour": "crimson",
+    },
+    "Wind speed": {
+        "column": "mean_ws",
+        "ylabel": "Wind speed [m s⁻¹]",
+        "colour": "darkorange",
+    },
+    "Pressure": {
+        "column": "sample_bp",
+        "ylabel": "Pressure [hPa]",
+        "colour": "royalblue",
+    },
+    "Relative humidity": {
+        "column": "rh_corr",
+        "ylabel": "Relative humidity [%]",
+        "colour": "seagreen",
+    },
+}
 
 
-@st.cache_data(ttl=300)
-def load_obs(file_id):
-    url = GDRIVE_BASE + file_id
-    df = pd.read_csv(url, index_col=0, parse_dates=True)
-    df.index.name = "time_utc"
-    return df
+# ============================================================
+# Streamlit setup
+# ============================================================
 
+st.set_page_config(
+    page_title="Aconcagua Observations",
+    layout="wide",
+)
 
 st.title("Aconcagua Observations")
 
-station = st.sidebar.selectbox("Station", list(OBS_FILES.keys()))
+
+# ============================================================
+# Helpers
+# ============================================================
+
+@st.cache_data(ttl=300)
+def load_obs(file_id: str) -> pd.DataFrame:
+    url = GDRIVE_BASE + file_id
+
+    df = pd.read_csv(
+        url,
+        index_col=0,
+        parse_dates=True,
+    )
+
+    df.index.name = "time_utc"
+    df = df.sort_index()
+
+    return df
+
+
+# ============================================================
+# Sidebar
+# ============================================================
+
+station = st.sidebar.selectbox(
+    "Station",
+    list(OBS_FILES.keys()),
+)
 
 variable = st.sidebar.selectbox(
     "Variable",
-    {
-        "Temperature": "sample_ta",
-        "Wind speed": "mean_ws",
-        "Pressure": "sample_bp",
-        "Relative humidity": "rh_corr",
-    }.keys(),
+    list(VAR_MAP.keys()),
 )
 
-var_map = {
-    "Temperature": ("sample_ta", "Temperature [°C]"),
-    "Wind speed": ("mean_ws", "Wind speed [m s⁻¹]"),
-    "Pressure": ("sample_bp", "Pressure [hPa]"),
-    "Relative humidity": ("rh_corr", "Relative humidity [%]"),
-}
+ndays = st.sidebar.slider(
+    "Days to plot",
+    min_value=1,
+    max_value=60,
+    value=10,
+)
 
-col, ylabel = var_map[variable]
+
+# ============================================================
+# Load and subset data
+# ============================================================
 
 df = load_obs(OBS_FILES[station])
 
-st.caption(f"Latest observation: {df.index.max():%Y-%m-%d %H:%M} UTC")
+end_time = df.index.max()
+start_time = end_time - pd.Timedelta(days=ndays)
 
-fig, ax = plt.subplots(figsize=(12, 5))
+df_plot = df.loc[start_time:end_time].copy()
 
-ax.plot(df.index, df[col], linewidth=1.5)
+var_info = VAR_MAP[variable]
+col = var_info["column"]
+ylabel = var_info["ylabel"]
+colour = var_info["colour"]
 
-ax.set_title(f"{station}: {variable}")
-ax.set_ylabel(ylabel)
-ax.set_xlabel("Time [UTC]")
-ax.grid(True, alpha=0.3)
+
+# ============================================================
+# Metadata
+# ============================================================
+
+col1, col2, col3 = st.columns(3)
+
+col1.metric("Station", station)
+col2.metric("Latest observation", f"{end_time:%Y-%m-%d %H:%M} UTC")
+col3.metric("Window", f"Last {ndays} days")
+
+
+# ============================================================
+# Plot
+# ============================================================
+
+fig, ax = plt.subplots(figsize=(13, 5.8))
+
+ax.plot(
+    df_plot.index,
+    df_plot[col],
+    color=colour,
+    linewidth=2.4,
+    marker="o",
+    markersize=3.5,
+    markeredgewidth=0,
+    alpha=0.95,
+)
+
+ax.set_title(
+    f"{station}: {variable}",
+    fontsize=15,
+    fontweight="bold",
+)
+
+ax.set_ylabel(ylabel, fontsize=12)
+ax.set_xlabel("Time [UTC]", fontsize=12)
+
+ax.grid(True, alpha=0.25, linewidth=0.8)
+
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
 
 ax.xaxis.set_major_formatter(mdates.DateFormatter("%d %b\n%H:%M"))
 fig.autofmt_xdate()
 
+plt.tight_layout()
+
 st.pyplot(fig)
 
-with st.expander("Show latest observations"):
-    st.dataframe(df.tail(24), use_container_width=True)
+
+# ============================================================
+# Table
+# ============================================================
+
+with st.expander("Show recent observations"):
+    st.dataframe(
+        df_plot.tail(48),
+        use_container_width=True,
+    )
