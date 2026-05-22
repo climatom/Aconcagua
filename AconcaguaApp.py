@@ -16,7 +16,11 @@ OBS_FILES = {
     "Mulas": "1Ag-eXDgUT0x0QoL-zX8BcYK3vDB5Q9VW",
 }
 
+# Historical stitched/best-available forecast archive
 FORECAST_FILE_ID = "17uXHC62XX9kmqA6HP2svy5dolpwHABpd"
+
+# Latest raw future forecast
+LATEST_FORECAST_FILE_ID = "1sNCsYy68dG8ony5R3qHfQy4f1YjzS-cI"
 
 VAR_MAP = {
     "Temperature": {
@@ -131,9 +135,16 @@ variable = st.sidebar.selectbox(
 )
 
 ndays = st.sidebar.slider(
-    "Days to plot",
+    "Past days to plot",
     min_value=1,
     max_value=60,
+    value=10,
+)
+
+future_days = st.sidebar.slider(
+    "Future forecast days to plot",
+    min_value=1,
+    max_value=15,
     value=10,
 )
 
@@ -160,6 +171,8 @@ ylabel = info["ylabel"]
 colour = info["colour"]
 
 fcst = None
+latest_fcst = None
+
 forecast_available = (
     mode == "Summit obs + ECMWF forecast"
     and station == "Summit"
@@ -174,6 +187,7 @@ if mode == "Summit obs + ECMWF forecast" and info["fcst_median"] is None:
 
 if forecast_available:
     fcst = load_forecast(FORECAST_FILE_ID)
+    latest_fcst = load_forecast(LATEST_FORECAST_FILE_ID)
 
 
 # ============================================================
@@ -181,16 +195,25 @@ if forecast_available:
 # ============================================================
 
 now_utc = pd.Timestamp.utcnow().tz_localize(None)
-end_time = now_utc
-start_time = end_time - pd.Timedelta(days=ndays)
 
-obs_plot = obs.loc[start_time:end_time].copy()
+past_start_time = now_utc - pd.Timedelta(days=ndays)
+future_end_time = now_utc + pd.Timedelta(days=future_days)
+
+obs_plot = obs.loc[past_start_time:now_utc].copy()
 
 fcst_plot = None
+latest_fcst_plot = None
+
 if fcst is not None:
     fcst_plot = fcst.loc[
-        (fcst["time_utc"] >= start_time)
-        & (fcst["time_utc"] <= end_time)
+        (fcst["time_utc"] >= past_start_time)
+        & (fcst["time_utc"] <= now_utc)
+    ].copy()
+
+if latest_fcst is not None:
+    latest_fcst_plot = latest_fcst.loc[
+        (latest_fcst["time_utc"] >= now_utc)
+        & (latest_fcst["time_utc"] <= future_end_time)
     ].copy()
 
 
@@ -204,12 +227,23 @@ if time_axis == "Argentina":
 
     if fcst_plot is not None:
         fcst_x = fcst_plot["time_argentina"]
+
+    if latest_fcst_plot is not None:
+        latest_fcst_x = latest_fcst_plot["time_argentina"]
+
+    now_x = to_argentina_time(now_utc)
+
 else:
     obs_x = obs_plot.index
     xlabel = "Time [UTC]"
 
     if fcst_plot is not None:
         fcst_x = fcst_plot["time_utc"]
+
+    if latest_fcst_plot is not None:
+        latest_fcst_x = latest_fcst_plot["time_utc"]
+
+    now_x = now_utc
 
 
 # ============================================================
@@ -226,13 +260,21 @@ if obs.empty:
 else:
     c3.metric("Latest obs", f"{obs.index.max():%Y-%m-%d %H:%M} UTC")
 
-c4.metric("Window", f"Last {ndays} days")
+c4.metric("Window", f"{ndays} days past + {future_days} days future")
 
 if fcst_plot is not None and len(fcst_plot) > 0:
     st.caption(
-        "Forecast archive: best available ECMWF ENS forecast by valid time. "
-        f"Latest forecast init in plotted window: "
+        "Historical forecast archive: best available ECMWF ENS forecast by valid time. "
+        f"Latest archive init in plotted past window: "
         f"{fcst_plot['init_time_utc'].max():%Y-%m-%d %H:%M} UTC"
+    )
+
+if latest_fcst_plot is not None and len(latest_fcst_plot) > 0:
+    st.caption(
+        "Latest future forecast file: "
+        f"init {latest_fcst_plot['init_time_utc'].max():%Y-%m-%d %H:%M} UTC; "
+        f"valid from {latest_fcst_plot['time_utc'].min():%Y-%m-%d %H:%M} "
+        f"to {latest_fcst_plot['time_utc'].max():%Y-%m-%d %H:%M} UTC."
     )
 
 
@@ -241,10 +283,13 @@ if fcst_plot is not None and len(fcst_plot) > 0:
 # ============================================================
 
 if obs_plot.empty:
-    st.warning("No observations available in the selected time window.")
+    st.warning("No observations available in the selected past time window.")
 
 if fcst_plot is not None and fcst_plot.empty:
-    st.warning("No forecast data available in the selected time window.")
+    st.warning("No historical forecast data available in the selected past time window.")
+
+if latest_fcst_plot is not None and latest_fcst_plot.empty:
+    st.warning("No latest future forecast data available after the current time.")
 
 
 # ============================================================
@@ -253,7 +298,7 @@ if fcst_plot is not None and fcst_plot.empty:
 
 fig, ax = plt.subplots(figsize=(14, 6))
 
-# Forecast
+# Historical best-available forecast archive
 if fcst_plot is not None and not fcst_plot.empty:
     fcst_median = info["fcst_median"]
     fcst_p10 = info["fcst_p10"]
@@ -266,7 +311,7 @@ if fcst_plot is not None and not fcst_plot.empty:
             fcst_plot[fcst_p90],
             color="grey",
             alpha=0.22,
-            label="ECMWF ENS 10–90%",
+            label="Archive ECMWF ENS 10–90%",
             zorder=1,
         )
 
@@ -274,10 +319,38 @@ if fcst_plot is not None and not fcst_plot.empty:
         fcst_x,
         fcst_plot[fcst_median],
         color="black",
-        linewidth=2.5,
-        label="ECMWF ENS median",
+        linewidth=2.4,
+        label="Archive ECMWF ENS median",
         zorder=2,
     )
+
+
+# Latest future forecast
+if latest_fcst_plot is not None and not latest_fcst_plot.empty:
+    fcst_median = info["fcst_median"]
+    fcst_p10 = info["fcst_p10"]
+    fcst_p90 = info["fcst_p90"]
+
+    if show_spread:
+        ax.fill_between(
+            latest_fcst_x,
+            latest_fcst_plot[fcst_p10],
+            latest_fcst_plot[fcst_p90],
+            color="lightskyblue",
+            alpha=0.32,
+            label="Latest ECMWF ENS 10–90%",
+            zorder=1,
+        )
+
+    ax.plot(
+        latest_fcst_x,
+        latest_fcst_plot[fcst_median],
+        color="navy",
+        linewidth=3.0,
+        label="Latest ECMWF ENS median",
+        zorder=2,
+    )
+
 
 # Observations
 if not obs_plot.empty and obs_col in obs_plot.columns:
@@ -301,6 +374,18 @@ if not obs_plot.empty and obs_col in obs_plot.columns:
         alpha=0.95,
         zorder=4,
     )
+
+
+# Now divider
+ax.axvline(
+    now_x,
+    color="black",
+    linestyle="--",
+    linewidth=1.2,
+    alpha=0.7,
+    label="Now",
+)
+
 
 ax.set_title(
     f"Aconcagua {station}: {variable}",
@@ -334,5 +419,9 @@ with st.expander("Show recent observations"):
     st.dataframe(obs_plot.tail(72), use_container_width=True)
 
 if fcst_plot is not None:
-    with st.expander("Show forecast rows"):
+    with st.expander("Show historical best-available forecast rows"):
         st.dataframe(fcst_plot, use_container_width=True)
+
+if latest_fcst_plot is not None:
+    with st.expander("Show latest future forecast rows"):
+        st.dataframe(latest_fcst_plot, use_container_width=True)
