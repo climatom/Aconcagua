@@ -1,35 +1,53 @@
-import pandas as pd
-import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+import pandas as pd
 import streamlit as st
 
 
+# ============================================================
+# Config
+# ============================================================
+
 GDRIVE_BASE = "https://drive.google.com/uc?id="
 
-# Replace with Google Drive file IDs
 OBS_FILES = {
-    "Summit": "1LN51hLQMm774HAMMOzaJDsNon6sN_m3A",
-    "Nido": "1hhZB9nUUre50OX84Reoi28Kng8p9nFm5",
-    "Mulas": "1Ag-eXDgUT0x0QoL-zX8BcYK3vDB5Q9VW",
+    "Summit": "PASTE_SUMMIT_OBS_FILE_ID",
+    "Nido": "PASTE_NIDO_FILE_ID",
+    "Mulas": "PASTE_MULAS_FILE_ID",
 }
+
+FORECAST_FILE_ID = "17uXHC62XX9kmqA6HP2svy5dolpwHABpd"
+
 VAR_MAP = {
     "Temperature": {
-        "column": "sample_ta",
+        "obs_col": "sample_ta",
+        "fcst_median": "summit_t_C_median",
+        "fcst_p10": "summit_t_C_p10",
+        "fcst_p90": "summit_t_C_p90",
         "ylabel": "Temperature [°C]",
         "colour": "crimson",
     },
-    "Wind speed [max gust]": {
-        "column": "max_ws",
+    "Wind speed": {
+        "obs_col": "mean_ws",
+        "fcst_median": "summit_wspd_ms_median",
+        "fcst_p10": "summit_wspd_ms_p10",
+        "fcst_p90": "summit_wspd_ms_p90",
         "ylabel": "Wind speed [m s⁻¹]",
         "colour": "darkorange",
     },
     "Pressure": {
-        "column": "sample_bp",
+        "obs_col": "sample_bp",
+        "fcst_median": "summit_p_hPa_median",
+        "fcst_p10": "summit_p_hPa_p10",
+        "fcst_p90": "summit_p_hPa_p90",
         "ylabel": "Pressure [hPa]",
         "colour": "royalblue",
     },
     "Relative humidity": {
-        "column": "rh_corr",
+        "obs_col": "rh_corr",
+        "fcst_median": None,
+        "fcst_p10": None,
+        "fcst_p90": None,
         "ylabel": "Relative humidity [%]",
         "colour": "seagreen",
     },
@@ -41,11 +59,11 @@ VAR_MAP = {
 # ============================================================
 
 st.set_page_config(
-    page_title="Aconcagua Observations",
+    page_title="Aconcagua Observations and Forecast",
     layout="wide",
 )
 
-st.title("Aconcagua Observations")
+st.title("Aconcagua Observations and ECMWF Ensemble Forecast")
 
 
 # ============================================================
@@ -54,23 +72,53 @@ st.title("Aconcagua Observations")
 
 @st.cache_data(ttl=300)
 def load_obs(file_id: str) -> pd.DataFrame:
-    url = GDRIVE_BASE + file_id
-
     df = pd.read_csv(
-        url,
+        GDRIVE_BASE + file_id,
         index_col=0,
         parse_dates=True,
     )
 
     df.index.name = "time_utc"
+    df.index = pd.to_datetime(df.index, errors="coerce")
+    df = df[df.index.notna()]
     df = df.sort_index()
 
     return df
 
 
+@st.cache_data(ttl=300)
+def load_forecast(file_id: str) -> pd.DataFrame:
+    df = pd.read_csv(
+        GDRIVE_BASE + file_id,
+        parse_dates=["init_time_utc", "time_utc", "time_argentina"],
+    )
+
+    df["time_utc"] = pd.to_datetime(df["time_utc"], errors="coerce")
+    df["init_time_utc"] = pd.to_datetime(df["init_time_utc"], errors="coerce")
+
+    if "time_argentina" in df.columns:
+        df["time_argentina"] = pd.to_datetime(df["time_argentina"], errors="coerce")
+    else:
+        df["time_argentina"] = df["time_utc"] - pd.Timedelta(hours=3)
+
+    df = df.dropna(subset=["time_utc"])
+    df = df.sort_values("time_utc")
+
+    return df
+
+
+def to_argentina_time(t):
+    return t - pd.Timedelta(hours=3)
+
+
 # ============================================================
 # Sidebar
 # ============================================================
+
+mode = st.sidebar.radio(
+    "Display mode",
+    ["Observations only", "Summit obs + ECMWF forecast"],
+)
 
 station = st.sidebar.selectbox(
     "Station",
@@ -89,93 +137,202 @@ ndays = st.sidebar.slider(
     value=10,
 )
 
+time_axis = st.sidebar.selectbox(
+    "Time axis",
+    ["UTC", "Argentina"],
+)
+
+show_spread = st.sidebar.checkbox(
+    "Show forecast 10–90% range",
+    value=True,
+)
+
 
 # ============================================================
-# Load and subset data
+# Load data
 # ============================================================
 
-df = load_obs(OBS_FILES[station])
+obs = load_obs(OBS_FILES[station])
 
-end_time = df.index.max()
+info = VAR_MAP[variable]
+obs_col = info["obs_col"]
+ylabel = info["ylabel"]
+colour = info["colour"]
+
+fcst = None
+forecast_available = (
+    mode == "Summit obs + ECMWF forecast"
+    and station == "Summit"
+    and info["fcst_median"] is not None
+)
+
+if mode == "Summit obs + ECMWF forecast" and station != "Summit":
+    st.warning("Forecast comparison is currently summit-only. Showing observations only.")
+
+if mode == "Summit obs + ECMWF forecast" and info["fcst_median"] is None:
+    st.warning(f"No ECMWF forecast variable configured for {variable}. Showing observations only.")
+
+if forecast_available:
+    fcst = load_forecast(FORECAST_FILE_ID)
+
+
+# ============================================================
+# Time window
+# ============================================================
+
+now_utc = pd.Timestamp.utcnow().tz_localize(None)
+end_time = now_utc
 start_time = end_time - pd.Timedelta(days=ndays)
 
-df_plot = df.loc[start_time:end_time].copy()
+obs_plot = obs.loc[start_time:end_time].copy()
 
-var_info = VAR_MAP[variable]
-col = var_info["column"]
-ylabel = var_info["ylabel"]
-colour = var_info["colour"]
+fcst_plot = None
+if fcst is not None:
+    fcst_plot = fcst.loc[
+        (fcst["time_utc"] >= start_time)
+        & (fcst["time_utc"] <= end_time)
+    ].copy()
+
+
+# ============================================================
+# Time axis
+# ============================================================
+
+if time_axis == "Argentina":
+    obs_x = to_argentina_time(obs_plot.index)
+    xlabel = "Time [Argentina, UTC−3]"
+
+    if fcst_plot is not None:
+        fcst_x = fcst_plot["time_argentina"]
+else:
+    obs_x = obs_plot.index
+    xlabel = "Time [UTC]"
+
+    if fcst_plot is not None:
+        fcst_x = fcst_plot["time_utc"]
 
 
 # ============================================================
 # Metadata
 # ============================================================
 
-col1, col2, col3 = st.columns(3)
+c1, c2, c3, c4 = st.columns(4)
 
-col1.metric("Station", station)
-col2.metric("Latest observation", f"{end_time:%Y-%m-%d %H:%M} UTC")
-col3.metric("Window", f"Last {ndays} days")
+c1.metric("Station", station)
+c2.metric("Variable", variable)
+
+if obs.empty:
+    c3.metric("Latest obs", "No observations")
+else:
+    c3.metric("Latest obs", f"{obs.index.max():%Y-%m-%d %H:%M} UTC")
+
+c4.metric("Window", f"Last {ndays} days")
+
+if fcst_plot is not None and len(fcst_plot) > 0:
+    st.caption(
+        "Forecast archive: best available ECMWF ENS forecast by valid time. "
+        f"Latest forecast init in plotted window: "
+        f"{fcst_plot['init_time_utc'].max():%Y-%m-%d %H:%M} UTC"
+    )
+
+
+# ============================================================
+# Warnings
+# ============================================================
+
+if obs_plot.empty:
+    st.warning("No observations available in the selected time window.")
+
+if fcst_plot is not None and fcst_plot.empty:
+    st.warning("No forecast data available in the selected time window.")
 
 
 # ============================================================
 # Plot
 # ============================================================
 
-fig, ax = plt.subplots(figsize=(13, 5.8))
+fig, ax = plt.subplots(figsize=(14, 6))
 
-# Connecting line
-ax.plot(
-    df_plot.index,
-    df_plot[col],
-    color=colour,
-    linewidth=2.6,
-    alpha=0.9,
-    zorder=2,
-)
+# Forecast
+if fcst_plot is not None and not fcst_plot.empty:
+    fcst_median = info["fcst_median"]
+    fcst_p10 = info["fcst_p10"]
+    fcst_p90 = info["fcst_p90"]
 
-# Observation points
-ax.scatter(
-    df_plot.index,
-    df_plot[col],
-    color=colour,
-    s=38,
-    edgecolors="black",
-    linewidths=0.5,
-    alpha=0.95,
-    zorder=3,
-)
+    if show_spread:
+        ax.fill_between(
+            fcst_x,
+            fcst_plot[fcst_p10],
+            fcst_plot[fcst_p90],
+            color="grey",
+            alpha=0.22,
+            label="ECMWF ENS 10–90%",
+            zorder=1,
+        )
+
+    ax.plot(
+        fcst_x,
+        fcst_plot[fcst_median],
+        color="black",
+        linewidth=2.5,
+        label="ECMWF ENS median",
+        zorder=2,
+    )
+
+# Observations
+if not obs_plot.empty and obs_col in obs_plot.columns:
+    ax.plot(
+        obs_x,
+        obs_plot[obs_col],
+        color=colour,
+        linewidth=2.6,
+        alpha=0.9,
+        label="Observed",
+        zorder=3,
+    )
+
+    ax.scatter(
+        obs_x,
+        obs_plot[obs_col],
+        color=colour,
+        edgecolors="black",
+        linewidths=0.5,
+        s=42,
+        alpha=0.95,
+        zorder=4,
+    )
 
 ax.set_title(
-    f"{station}: {variable}",
+    f"Aconcagua {station}: {variable}",
     fontsize=15,
     fontweight="bold",
 )
 
-ax.set_ylabel(ylabel, fontsize=12)
-ax.set_xlabel("Time [UTC]", fontsize=12)
+ax.set_ylabel(ylabel)
+ax.set_xlabel(xlabel)
 
-ax.grid(True, alpha=0.25, linewidth=0.8)
-
+ax.grid(True, alpha=0.25)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 
-ax.xaxis.set_major_formatter(
-    mdates.DateFormatter("%d %b\n%H:%M")
-)
+if ax.get_legend_handles_labels()[0]:
+    ax.legend(loc="best")
 
+ax.xaxis.set_major_formatter(mdates.DateFormatter("%d %b\n%H:%M"))
 fig.autofmt_xdate()
 
 plt.tight_layout()
 
 st.pyplot(fig)
 
+
 # ============================================================
-# Table
+# Tables
 # ============================================================
 
 with st.expander("Show recent observations"):
-    st.dataframe(
-        df_plot.tail(48),
-        use_container_width=True,
-    )
+    st.dataframe(obs_plot.tail(72), use_container_width=True)
+
+if fcst_plot is not None:
+    with st.expander("Show forecast rows"):
+        st.dataframe(fcst_plot, use_container_width=True)
