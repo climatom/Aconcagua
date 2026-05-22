@@ -11,9 +11,9 @@ import streamlit as st
 GDRIVE_BASE = "https://drive.google.com/uc?id="
 
 OBS_FILES = {
-    "Summit": "PASTE_SUMMIT_OBS_FILE_ID",
-    "Nido": "PASTE_NIDO_FILE_ID",
-    "Mulas": "PASTE_MULAS_FILE_ID",
+    "Summit": "1LN51hLQMm774HAMMOzaJDsNon6sN_m3A",
+    "Nido": "1hhZB9nUUre50OX84Reoi28Kng8p9nFm5",
+    "Mulas": "1Ag-eXDgUT0x0QoL-zX8BcYK3vDB5Q9VW",
 }
 
 FORECAST_FILE_ID = "17uXHC62XX9kmqA6HP2svy5dolpwHABpd"
