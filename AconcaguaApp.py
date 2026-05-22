@@ -124,15 +124,26 @@ col3.metric("Window", f"Last {ndays} days")
 
 fig, ax = plt.subplots(figsize=(13, 5.8))
 
+# Connecting line
 ax.plot(
     df_plot.index,
     df_plot[col],
     color=colour,
-    linewidth=2.4,
-    marker="o",
-    markersize=3.5,
-    markeredgewidth=0,
+    linewidth=2.6,
+    alpha=0.9,
+    zorder=2,
+)
+
+# Observation points
+ax.scatter(
+    df_plot.index,
+    df_plot[col],
+    color=colour,
+    s=38,
+    edgecolors="black",
+    linewidths=0.5,
     alpha=0.95,
+    zorder=3,
 )
 
 ax.set_title(
@@ -149,13 +160,15 @@ ax.grid(True, alpha=0.25, linewidth=0.8)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 
-ax.xaxis.set_major_formatter(mdates.DateFormatter("%d %b\n%H:%M"))
+ax.xaxis.set_major_formatter(
+    mdates.DateFormatter("%d %b\n%H:%M")
+)
+
 fig.autofmt_xdate()
 
 plt.tight_layout()
 
 st.pyplot(fig)
-
 
 # ============================================================
 # Table
