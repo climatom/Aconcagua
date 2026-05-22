@@ -18,7 +18,7 @@ VAR_MAP = {
         "ylabel": "Temperature [°C]",
         "colour": "crimson",
     },
-    "Wind speed": {
+    "Wind speed [max gust]": {
         "column": "max_ws",
         "ylabel": "Wind speed [m s⁻¹]",
         "colour": "darkorange",
