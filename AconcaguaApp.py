@@ -16,16 +16,13 @@ OBS_FILES = {
     "Mulas": "1Ag-eXDgUT0x0QoL-zX8BcYK3vDB5Q9VW",
 }
 
-# Historical stitched/best-available forecast archive
 FORECAST_FILE_ID = "17uXHC62XX9kmqA6HP2svy5dolpwHABpd"
-
-# Latest raw future forecast
 LATEST_FORECAST_FILE_ID = "1sNCsYy68dG8ony5R3qHfQy4f1YjzS-cI"
-
 
 VAR_MAP = {
     "Temperature": {
         "obs_col": "sample_ta",
+        "obs_col_2": None,
         "fcst_median": "summit_t_C_median",
         "fcst_p10": "summit_t_C_p10",
         "fcst_p90": "summit_t_C_p90",
@@ -34,14 +31,17 @@ VAR_MAP = {
     },
     "Wind speed": {
         "obs_col": "max_ws",
+        "obs_col_2": "max_ws_2",
         "fcst_median": "summit_wspd_ms_median",
         "fcst_p10": "summit_wspd_ms_p10",
         "fcst_p90": "summit_wspd_ms_p90",
         "ylabel": "Wind speed [m s⁻¹]",
         "colour": "darkorange",
+        "colour_2": "purple",
     },
     "Pressure": {
         "obs_col": "sample_bp",
+        "obs_col_2": None,
         "fcst_median": "summit_p_hPa_median",
         "fcst_p10": "summit_p_hPa_p10",
         "fcst_p90": "summit_p_hPa_p90",
@@ -50,6 +50,7 @@ VAR_MAP = {
     },
     "Relative humidity": {
         "obs_col": "rh_corr",
+        "obs_col_2": None,
         "fcst_median": None,
         "fcst_p10": None,
         "fcst_p90": None,
@@ -167,9 +168,13 @@ show_spread = st.sidebar.checkbox(
 obs = load_obs(OBS_FILES[station])
 
 info = VAR_MAP[variable]
+
 obs_col = info["obs_col"]
+obs_col_2 = info.get("obs_col_2")
+
 ylabel = info["ylabel"]
 colour = info["colour"]
+colour_2 = info.get("colour_2", "purple")
 
 fcst = None
 latest_fcst = None
@@ -225,6 +230,7 @@ if latest_fcst is not None:
 if time_axis == "Argentina":
     obs_x = to_argentina_time(obs_plot.index)
     xlabel = "Time [Argentina, UTC−3]"
+    now_x = to_argentina_time(now_utc)
 
     if fcst_plot is not None:
         fcst_x = fcst_plot["time_argentina"]
@@ -232,19 +238,16 @@ if time_axis == "Argentina":
     if latest_fcst_plot is not None:
         latest_fcst_x = latest_fcst_plot["time_argentina"]
 
-    now_x = to_argentina_time(now_utc)
-
 else:
     obs_x = obs_plot.index
     xlabel = "Time [UTC]"
+    now_x = now_utc
 
     if fcst_plot is not None:
         fcst_x = fcst_plot["time_utc"]
 
     if latest_fcst_plot is not None:
         latest_fcst_x = latest_fcst_plot["time_utc"]
-
-    now_x = now_utc
 
 
 # ============================================================
@@ -285,6 +288,12 @@ if latest_fcst_plot is not None and len(latest_fcst_plot) > 0:
 
 if obs_plot.empty:
     st.warning("No observations available in the selected past time window.")
+
+if obs_col not in obs.columns:
+    st.warning(f"Observation column '{obs_col}' is not available for {station}.")
+
+if variable == "Wind speed" and obs_col_2 is not None and obs_col_2 not in obs.columns:
+    st.info(f"Second wind-speed column '{obs_col_2}' is not available for {station}.")
 
 if fcst_plot is not None and fcst_plot.empty:
     st.warning("No historical forecast data available in the selected past time window.")
@@ -353,7 +362,7 @@ if latest_fcst_plot is not None and not latest_fcst_plot.empty:
     )
 
 
-# Observations
+# Primary observations
 if not obs_plot.empty and obs_col in obs_plot.columns:
     ax.plot(
         obs_x,
@@ -361,7 +370,7 @@ if not obs_plot.empty and obs_col in obs_plot.columns:
         color=colour,
         linewidth=2.6,
         alpha=0.9,
-        label="Observed",
+        label=f"Observed {obs_col}",
         zorder=3,
     )
 
@@ -373,6 +382,36 @@ if not obs_plot.empty and obs_col in obs_plot.columns:
         linewidths=0.5,
         s=42,
         alpha=0.95,
+        zorder=4,
+    )
+
+
+# Optional second observed wind-speed series
+if (
+    variable == "Wind speed"
+    and obs_col_2 is not None
+    and not obs_plot.empty
+    and obs_col_2 in obs_plot.columns
+):
+    ax.plot(
+        obs_x,
+        obs_plot[obs_col_2],
+        color=colour_2,
+        linewidth=2.2,
+        alpha=0.85,
+        linestyle="--",
+        label=f"Observed {obs_col_2}",
+        zorder=3,
+    )
+
+    ax.scatter(
+        obs_x,
+        obs_plot[obs_col_2],
+        color=colour_2,
+        edgecolors="black",
+        linewidths=0.4,
+        s=34,
+        alpha=0.9,
         zorder=4,
     )
 
@@ -401,7 +440,8 @@ ax.grid(True, alpha=0.25)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 
-if ax.get_legend_handles_labels()[0]:
+handles, labels = ax.get_legend_handles_labels()
+if handles:
     ax.legend(loc="best")
 
 ax.xaxis.set_major_formatter(mdates.DateFormatter("%d %b\n%H:%M"))
