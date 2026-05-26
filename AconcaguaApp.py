@@ -22,7 +22,7 @@ LATEST_FORECAST_FILE_ID = "1sNCsYy68dG8ony5R3qHfQy4f1YjzS-cI"
 VAR_MAP = {
     "Temperature": {
         "obs_col": "sample_ta",
-        "obs_col_2": None,
+        "obs_col_2": "sample_ta2",
         "fcst_median": "summit_t_C_median",
         "fcst_p10": "summit_t_C_p10",
         "fcst_p90": "summit_t_C_p90",
