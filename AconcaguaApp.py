@@ -29,7 +29,7 @@ VAR_MAP = {
         "fcst_p90": "summit_t_C_p90",
         "ylabel": "Temperature [°C]",
         "colour": "crimson",
-        "colour_2": "firebrick",
+        "colour_2": "orange",
     },
     "Wind speed": {
         "obs_col": "max_ws",
