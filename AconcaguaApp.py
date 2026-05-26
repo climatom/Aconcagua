@@ -19,6 +19,7 @@ OBS_FILES = {
 FORECAST_FILE_ID = "17uXHC62XX9kmqA6HP2svy5dolpwHABpd"
 LATEST_FORECAST_FILE_ID = "1sNCsYy68dG8ony5R3qHfQy4f1YjzS-cI"
 
+
 VAR_MAP = {
     "Temperature": {
         "obs_col": "sample_ta",
@@ -28,6 +29,7 @@ VAR_MAP = {
         "fcst_p90": "summit_t_C_p90",
         "ylabel": "Temperature [°C]",
         "colour": "crimson",
+        "colour_2": "firebrick",
     },
     "Wind speed": {
         "obs_col": "max_ws",
@@ -47,6 +49,7 @@ VAR_MAP = {
         "fcst_p90": "summit_p_hPa_p90",
         "ylabel": "Pressure [hPa]",
         "colour": "royalblue",
+        "colour_2": None,
     },
     "Relative humidity": {
         "obs_col": "rh_corr",
@@ -56,6 +59,7 @@ VAR_MAP = {
         "fcst_p90": None,
         "ylabel": "Relative humidity [%]",
         "colour": "seagreen",
+        "colour_2": None,
     },
 }
 
@@ -174,7 +178,7 @@ obs_col_2 = info.get("obs_col_2")
 
 ylabel = info["ylabel"]
 colour = info["colour"]
-colour_2 = info.get("colour_2", "purple")
+colour_2 = info.get("colour_2") or "purple"
 
 fcst = None
 latest_fcst = None
@@ -292,8 +296,8 @@ if obs_plot.empty:
 if obs_col not in obs.columns:
     st.warning(f"Observation column '{obs_col}' is not available for {station}.")
 
-if variable == "Wind speed" and obs_col_2 is not None and obs_col_2 not in obs.columns:
-    st.info(f"Second wind-speed column '{obs_col_2}' is not available for {station}.")
+if obs_col_2 is not None and obs_col_2 not in obs.columns:
+    st.info(f"Second observation column '{obs_col_2}' is not available for {station}.")
 
 if fcst_plot is not None and fcst_plot.empty:
     st.warning("No historical forecast data available in the selected past time window.")
@@ -362,7 +366,7 @@ if latest_fcst_plot is not None and not latest_fcst_plot.empty:
     )
 
 
-# Primary observations
+# Primary observed series
 if not obs_plot.empty and obs_col in obs_plot.columns:
     ax.plot(
         obs_x,
@@ -386,10 +390,9 @@ if not obs_plot.empty and obs_col in obs_plot.columns:
     )
 
 
-# Optional second observed wind-speed series
+# Optional second observed series
 if (
-    variable == "Wind speed"
-    and obs_col_2 is not None
+    obs_col_2 is not None
     and not obs_plot.empty
     and obs_col_2 in obs_plot.columns
 ):
@@ -425,7 +428,6 @@ ax.axvline(
     alpha=0.7,
     label="Now",
 )
-
 
 ax.set_title(
     f"Aconcagua {station}: {variable}",
