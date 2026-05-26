@@ -33,7 +33,7 @@ VAR_MAP = {
         "colour": "crimson",
     },
     "Wind speed": {
-        "obs_col": "mean_ws",
+        "obs_col": "max_ws",
         "fcst_median": "summit_wspd_ms_median",
         "fcst_p10": "summit_wspd_ms_p10",
         "fcst_p90": "summit_wspd_ms_p90",
